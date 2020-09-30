@@ -1,5 +1,6 @@
 from PyQt5.QtWidgets import QWidget, QLabel, QApplication, QFormLayout, QLineEdit, QVBoxLayout, QPushButton, QTabWidget
 import sys
+from PyQt5.QtCore import *
 
 
 class Registro(QTabWidget):
@@ -32,22 +33,31 @@ class Registro(QTabWidget):
         self.tab1Layout.addLayout(self.layoutOne)
         # LABEL
         self.label = QLabel('PEDIDO', parent=self)
+        self.label.setStyleSheet(
+            "background: black; color: white;")
+        self.label.setAlignment(Qt.AlignCenter)
         self.tab1Layout.addWidget(self.label)
         # Layout Cantidad de Empanadas
         self.layoutTwo = QFormLayout()
-        self.layoutTwo.addRow('POLLO', QLineEdit())
+        self.polloWidget = QLineEdit()
+        self.layoutTwo.addRow('POLLO', self.polloWidget)
         self.layoutTwo.addRow('CARNE', QLineEdit())
         self.layoutTwo.addRow('EMPANACHOS', QLineEdit())
-        self.layoutTwo.addRow('CANTIDAD EMPANADAS', QLineEdit())
+        self.layoutTwo.addRow('CANTIDAD EMPA.', QLineEdit())
         self.layoutTwo.addRow('VALOR', QLineEdit())
         self.tab1Layout.addLayout(self.layoutTwo)
         # Buttons
         self.button = QPushButton('GUARDAR')
         self.button2 = QPushButton('LIMPIAR')
+        self.button2.clicked.connect(self.tab1Buttons)
+
         self.button3 = QPushButton('ELIMINAR')
         self.tab1Layout.addWidget(self.button)
         self.tab1Layout.addWidget(self.button2)
         self.tab1Layout.addWidget(self.button3)
+
+    def tab1Buttons(self):
+        self.polloWidget.setText("")
 
 
 app = QApplication(sys.argv)
