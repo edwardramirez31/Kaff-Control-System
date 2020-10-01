@@ -101,6 +101,7 @@ class Registro(QTabWidget):
         self.buttons["CLEAR"].clicked.connect(self.clearAll)
         self.buttons["Browse"].clicked.connect(self.calendar)
         self.buttons["CALCULATE"].clicked.connect(self.calculate)
+        self.buttons["SAVE"].clicked.connect(self.save)
 
         # Creating the Combo Box Button
         self.combo = QComboBox()
@@ -138,7 +139,29 @@ class Registro(QTabWidget):
             self.date.toString("yyyy-MM-dd"))
 
     def save(self):
-        pass
+        # Getting the values
+        self.valuesToSave = list()
+        for widgetName, widget in self.lineEditWidgets.items():
+            if widgetName == "CIUDAD":
+                if widget.text() == "Bucaramanga":
+                    self.valuesToSave.append(1)
+                else:
+                    self.valuesToSave.append(2)
+            else:
+                self.valuesToSave.append(widget.text())
+        if str(self.combo.currentText()) == "Nequi":
+            payment_id = 1
+        else:
+            payment_id = 2
+
+        date, name, birthday, cellphone, address, city_id, pollo, carne, empanachos, total, value = self.valuesToSave
+        # Setting SQL
+        self.conn = connect('database.sqlite')
+        self.cur = self.conn.cursor()
+        self.cur.execute('''
+        INSERT INTO Clients(date, name, birthday, cellphone, address, city_id, payment_id, pollo, carne, empanachos, value) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', (date, name, birthday, cellphone, address, city_id, payment_id, int(pollo), int(carne), int(empanachos), int(value)))
+        self.conn.commit()
+        self.cur.close()
 
 
 def main():
