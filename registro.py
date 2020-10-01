@@ -1,8 +1,31 @@
-from PyQt5.QtWidgets import QWidget, QLabel, QApplication, QGridLayout, QLineEdit, QPushButton, QTabWidget, QComboBox, QCalendarWidget
+from PyQt5.QtWidgets import QWidget, QLabel, QApplication, QGridLayout, QLineEdit, QPushButton, QTabWidget, QComboBox, QCalendarWidget, QMessageBox, QTableView, QVBoxLayout
+from PyQt5.QtSql import QSqlDatabase, QSqlQueryModel
 import sys
 # from PyQt5.QtCore import *
 from datetime import date
 from sqlite3 import connect
+
+
+class Database(QTableView):
+    def __init__(self, window):
+        super().__init__()
+        self.window = window
+        self.verticalLayout = QVBoxLayout()
+        self.verticalLayout.addWidget(self)
+        self.refresh = QPushButton("SHOW")
+        self.refresh.clicked.connect(self.connectDatabase)
+        self.verticalLayout.addWidget(self.refresh)
+        self.window.tab2.setLayout(self.verticalLayout)
+
+    def connectDatabase(self):
+        db = QSqlDatabase.addDatabase("QSQLITE")
+        db.setDatabaseName('database.sqlite')
+        db.open()
+
+        model = QSqlQueryModel()
+        model.setQuery('SELECT Clients.date, Clients.name, Clients.birthday, Clients.cellphone, Clients.address, City.name, Payment.method, Clients.pollo, Clients.carne, Clients.empanachos, Clients.value FROM Clients JOIN City JOIN Payment ON Clients.city_id = City.id AND Clients.payment_id = Payment.id')
+
+        self.setModel(model)
 
 
 class Registro(QTabWidget):
@@ -47,8 +70,7 @@ class Registro(QTabWidget):
                     self.label, position[0], position[1], position[2], position[3])
             else:
                 self.label = QLabel(labelName)
-                self.grid.addWidget(
-                    self.label, position[0], position[1])
+                self.grid.addWidget(self.label, position[0], position[1])
 
     def createLinesWidgets(self):
 
@@ -70,10 +92,13 @@ class Registro(QTabWidget):
         for widgetName, position in lineEditWidgets.items():
             if len(position) == 2:
                 self.lineEdit = QLineEdit()
+                self.lineEdit.setReadOnly(True)
                 self.grid.addWidget(self.lineEdit, position[0], position[1])
                 self.lineEditWidgets[widgetName] = self.lineEdit
             else:
                 self.lineEdit = QLineEdit()
+                if widgetName == "CANTIDAD DE EMPA" or widgetName == "FECHA":
+                    self.lineEdit.setReadOnly(True)
                 self.grid.addWidget(
                     self.lineEdit, position[0], position[1], position[2], position[3])
                 self.lineEditWidgets[widgetName] = self.lineEdit
@@ -84,7 +109,7 @@ class Registro(QTabWidget):
 
     def createButtons(self):
         buttons = {
-            "Browse": (2, 2),
+            "BROWSE": (2, 2),
             "CALCULATE": (12, 2),
             "SAVE": (13, 0),
             "CLEAR": (13, 1),
@@ -95,11 +120,12 @@ class Registro(QTabWidget):
             self.button = QPushButton(widgetName)
             self.grid.addWidget(self.button, position[0], position[1])
             self.buttons[widgetName] = self.button
+
         self.tab1.setLayout(self.grid)
 
         # Buttons Signals
         self.buttons["CLEAR"].clicked.connect(self.clearAll)
-        self.buttons["Browse"].clicked.connect(self.calendar)
+        self.buttons["BROWSE"].clicked.connect(self.calendar)
         self.buttons["CALCULATE"].clicked.connect(self.calculate)
         self.buttons["SAVE"].clicked.connect(self.save)
 
@@ -119,13 +145,26 @@ class Registro(QTabWidget):
         self.pollo = self.lineEditWidgets["POLLO"].text()
         self.carne = self.lineEditWidgets["CARNE"].text()
         self.empanachos = self.lineEditWidgets["EMPANACHOS"].text()
-        self.Total = int(self.pollo) + int(self.carne)+int(self.empanachos)
-        self.lineEditWidgets["CANTIDAD DE EMPA"].setText(str(self.Total))
-        if self.Total > 5:
-            self.value = 2300 * self.Total
-        else:
-            self.value = 2500 * self.Total
-        self.lineEditWidgets["VALOR"].setText(str(self.value))
+
+        if self.pollo == "":
+            self.pollo = 0
+        if self.carne == "":
+            self.carne = 0
+        if self.empanachos == "":
+            self.empanachos = 0
+
+        try:
+            self.Total = int(self.pollo) + int(self.carne)
+            self.lineEditWidgets["CANTIDAD DE EMPA"].setText(str(self.Total))
+            if self.Total > 5:
+                self.value = round(7000/3 * self.Total +
+                                   2500 * int(self.empanachos))
+            else:
+                self.value = round(2500 * (self.Total + int(self.empanachos)))
+            self.lineEditWidgets["VALOR"].setText(str(self.value))
+        except:
+            QMessageBox.critical(
+                self, "ERROR", "Put only numbers in 'POLLO' and 'CARNE' fields")
 
     def calendar(self):
         self.cal = QCalendarWidget()
@@ -159,15 +198,19 @@ class Registro(QTabWidget):
         self.conn = connect('database.sqlite')
         self.cur = self.conn.cursor()
         self.cur.execute('''
-        INSERT INTO Clients(date, name, birthday, cellphone, address, city_id, payment_id, pollo, carne, empanachos, value) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', (date, name, birthday, cellphone, address, city_id, payment_id, int(pollo), int(carne), int(empanachos), int(value)))
+        INSERT INTO Clients(date, name, birthday, cellphone, address, city_id, payment_id, pollo,
+        carne, empanachos, value) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (date, name, birthday, cellphone, address, city_id, payment_id, int(pollo), int(carne), int(empanachos), int(value)))
         self.conn.commit()
         self.cur.close()
+        self.clearAll()
 
 
 def main():
     app = QApplication(sys.argv)
     window = Registro()
     window.show()
+    tabDatabase = Database(window)
     sys.exit(app.exec_())
 
 
