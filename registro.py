@@ -23,7 +23,10 @@ class Database(QTableView):
         db.open()
 
         model = QSqlQueryModel()
-        model.setQuery('SELECT Clients.date, Clients.name, Clients.birthday, Clients.cellphone, Clients.address, City.name, Payment.method, Clients.pollo, Clients.carne, Clients.empanachos, Clients.value FROM Clients JOIN City JOIN Payment ON Clients.city_id = City.id AND Clients.payment_id = Payment.id')
+        model.setQuery('''
+        SELECT Clients.date, Clients.name, Clients.birthday, Clients.cellphone, Clients.address, 
+        City.name, Payment.method, Clients.pollo, Clients.carne, Clients.empanachos, 
+        Clients.value FROM Clients JOIN City JOIN Payment ON Clients.city_id = City.id AND Clients.payment_id = Payment.id''')
 
         self.setModel(model)
 
