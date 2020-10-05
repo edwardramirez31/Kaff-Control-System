@@ -1,4 +1,3 @@
-# from PyQt5.QtWidgets import QWidget, QLabel, QApplication, QGridLayout, QLineEdit, QPushButton, QTabWidget, QComboBox, QCalendarWidget, QMessageBox, QTableView, QVBoxLayout, QVBoxLayout
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import QPixmap, QIcon
 from PyQt5.QtSql import QSqlDatabase, QSqlQueryModel
@@ -7,6 +6,10 @@ from datetime import date, datetime
 from sqlite3 import connect
 from PyQt5.QtCore import *
 from functools import partial
+
+
+class Resultados(QTableView):
+    pass
 
 
 class Egresos(QWidget):
@@ -114,7 +117,7 @@ class Egresos(QWidget):
         self.conn = connect("database.sqlite")
         self.cur = self.conn.cursor()
         self.cur.execute(
-            f"DELETE FROM {database} WHERE id=(SELECT MAX(id) FROM Compras)")
+            f"DELETE FROM {database} WHERE id=(SELECT MAX(id) FROM {database})")
         self.conn.commit()
         self.cur.close()
 
@@ -191,32 +194,59 @@ class Database(QTableView):
                     }
                     QPushButton:pressed {
                         border-style: inset;
+                        border-color: gray;
                     }
                     """)
-        self.showButton.clicked.connect(self.connectDatabase)
         self.verticalLayout.addWidget(self.showButton)
-        self.window.tab2.setLayout(self.verticalLayout)
-        self.connectDatabase()
 
     def connectDatabase(self):
 
         if QSqlDatabase.contains():
-            db = QSqlDatabase.database()
-            db.setDatabaseName('database.sqlite')
-            db.open()
+            self.db = QSqlDatabase.database()
+            self.db.setDatabaseName('database.sqlite')
+            self.db.open()
         else:
-            db = QSqlDatabase.addDatabase("QSQLITE")
-            db.setDatabaseName('database.sqlite')
-            db.open()
+            self.db = QSqlDatabase.addDatabase("QSQLITE")
+            self.db.setDatabaseName('database.sqlite')
+            self.db.open()
 
-        model = QSqlQueryModel()
-        model.setQuery('''
+        self.model = QSqlQueryModel()
+        self.model.setQuery('''
         SELECT Clients.id, Clients.date, Clients.hour, Clients.name, Clients.birthday, Clients.cellphone,
         Clients.address, City.name, Payment.method, Clients.pollo, Clients.carne,
         Clients.empanachos, Clients.total, Clients.value FROM Clients JOIN City JOIN Payment
-        ON Clients.city_id = City.id AND Clients.payment_id = Payment.id''', db)
+        ON Clients.city_id = City.id AND Clients.payment_id = Payment.id''', self.db)
 
-        self.setModel(model)
+        self.setModel(self.model)
+
+    def resultadosDiarios(self):
+        if QSqlDatabase.contains():
+            self.db = QSqlDatabase.database()
+            self.db.setDatabaseName('database.sqlite')
+            self.db.open()
+        else:
+            self.db = QSqlDatabase.addDatabase("QSQLITE")
+            self.db.setDatabaseName('database.sqlite')
+            self.db.open()
+
+        self.model = QSqlQueryModel()
+        self.model.setQuery('''SELECT date1, ingresos, compras, gastos, 
+            (ingresos - compras - gastos) AS Total FROM (SELECT date1, 
+            ingresos, compras, gastos FROM ((SELECT Clients.date AS date1, 
+            SUM(Clients.value) AS ingresos FROM Clients GROUP BY Clients.date) 
+            JOIN (SELECT Compras.date AS date2, SUM(Compras.value) AS compras 
+            FROM Compras GROUP BY Compras.date) JOIN (SELECT Gastos.date AS date3, 
+            SUM(Gastos.value) AS gastos FROM Gastos GROUP BY Gastos.date) 
+            ON date1 = date2 AND date2 = date3))''', self.db)
+        # self.model.setQuery('''SELECT date1, ingresos, compras, gastos FROM (
+        #     (SELECT Clients.date AS date1, SUM(Clients.value) AS ingresos FROM
+        #     Clients GROUP BY Clients.date) JOIN (SELECT Compras.date AS date2,
+        #     SUM(Compras.value) AS compras FROM Compras GROUP BY Compras.date)
+        #     JOIN (SELECT Gastos.date AS date3, SUM(Gastos.value) AS gastos FROM
+        #     Gastos GROUP BY Gastos.date) ON date1 = date2 AND date2 = date3)
+        #     ''', self.db)
+        self.setModel(self.model)
+        # SELECT date, SUM(value) AS 'Ingresos' FROM Clients GROUP BY date
 
 
 class Registro(QTabWidget):
@@ -236,11 +266,13 @@ class Registro(QTabWidget):
         self.tab3 = QWidget()
         self.tab4 = QWidget()
         self.tab5 = QWidget()
+        self.tab6 = QWidget()
         self.addTab(self.tab1, "Registro")
         self.addTab(self.tab2, "Base de Datos")
         self.addTab(self.tab3, "Ingresos")
         self.addTab(self.tab4, "Compras")
         self.addTab(self.tab5, "Gastos")
+        self.addTab(self.tab6, "Res. DIarios")
 
     def createLabels(self):
         """This function creates all the labels of the tab1 and 
@@ -552,10 +584,7 @@ class Controller:
             self.conn = connect('database.sqlite')
             self.cur = self.conn.cursor()
             self.cur.execute("SELECT MAX(id) FROM Clients")
-            if self.cur.fetchone()[0] is None:
-                idBill = 0
-            else:
-                idBill = self.cur.fetchone()[0]
+            idBill = self.cur.fetchone()[0]
             self.cur.close()
 
             self.window.bill.setText(f'''
@@ -584,14 +613,26 @@ def main():
     app = QApplication(sys.argv)
     window = Registro()
     window.show()
+
     tabDatabase = Database(window)
+    tabDatabase.window.tab2.setLayout(tabDatabase.verticalLayout)
+    tabDatabase.connectDatabase()
+    tabDatabase.showButton.clicked.connect(tabDatabase.connectDatabase)
+
+    resultados = Database(window)
+    resultados.window.tab6.setLayout(resultados.verticalLayout)
+    resultados.resultadosDiarios()
+    resultados.showButton.clicked.connect(resultados.resultadosDiarios)
+
     ingresos = Ingresos(window)
     # lo que sigue entonces es llamar las funciones con parametros al crear la tabla
     # el parametro será el nombre de la tabla de la base de datos
     compras = Egresos(window, "Compras")
     compras.window.tab4.setLayout(compras.mainLayout)
+
     gastos = Egresos(window, "Gastos")
     gastos.window.tab5.setLayout(gastos.mainLayout)
+
     controller = Controller(window)
     sys.exit(app.exec_())
 
