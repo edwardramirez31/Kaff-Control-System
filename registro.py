@@ -6,18 +6,29 @@ import sys
 from datetime import date, datetime
 from sqlite3 import connect
 from PyQt5.QtCore import *
-
-# arreglar el guardado de datos cuando no hay un campo rellenado
-# buscar forma de quitar el 33 de 28333
+from functools import partial
 
 
-class Compras(QWidget):
-    def __init__(self, window):
+class Egresos(QWidget):
+    def __init__(self, window, database):
+        super().__init__()
+        self.window = window
         self.mainLayout = QGridLayout()
+
+        self.createLabels(database)
+        self.createButtons()
+        self.addTable(database)
+        self.buttons["REFRESH"].clicked.connect(
+            partial(self.addTable, database))
+        self.buttons["SAVE"].clicked.connect(partial(self.addItem, database))
+        self.buttons["DELETE"].clicked.connect(
+            partial(self.deleteRow, database))
+
+    def createLabels(self, database):
         self.labels = {
-            "<h3>FECHA</h3>": (0, 0),
-            "<h3>CONCEPTO</h3>": (2, 0),
-            "<h3>VALOR</h3>": (3, 0),
+            "<h2>FECHA</h2>": (1, 0),
+            "<h2>CONCEPTO</h2>": (2, 0),
+            "<h2>VALOR</h2>": (3, 0),
         }
         for labelName, position in self.labels.items():
             self.label = QLabel(labelName)
@@ -26,7 +37,15 @@ class Compras(QWidget):
                     font-family: times;
                     font-weight: bold;""")
             self.mainLayout.addWidget(self.label, position[0], position[1])
-
+        self.titleLabel = QLabel(f"<h2>Datos de {database}</h2>")
+        self.titleLabel.setAlignment(Qt.AlignCenter)
+        self.titleLabel.setStyleSheet("""
+                    color: #cac03f; font-family: times;
+                    font-weight: bold;
+                    border: 5px inset #cac03f;                 
+                    font-size: 15px;
+                    """)
+        self.mainLayout.addWidget(self.titleLabel, 0, 0, 1, 3)
         self.lineWidgets = {}
         self.lineEdits = {
             "FECHA": (1, 1),
@@ -40,16 +59,42 @@ class Compras(QWidget):
                     background-color : #A8DBC5;
                     border: 2px solid white;
                     border-radius: 5px;
+                    font-size: 15px;
                     """)
             self.mainLayout.addWidget(self.lineEdit, position[0], position[1])
             self.lineWidgets[lineName] = self.lineEdit
 
-        window.tab4.setLayout(self.mainLayout)
-        self.addTable()
+    def createButtons(self):
+        buttonsName = {
+            "SAVE": (1, 2),
+            "DELETE": (2, 2),
+            "REFRESH": (3, 2),
 
-    def addTable(self):
+        }
+        self.buttons = {}
+        for widgetName, position in buttonsName.items():
+            self.button = QPushButton(widgetName)
 
+            self.button.setStyleSheet("""
+                    QPushButton {                        
+                        background-color: #A8DBC5;
+                        font-family: arial;
+                        font-weight: bold;
+                        font-size: 12px;
+                        border-color: white;
+                    }
+                    QPushButton:hover {
+                        background-color: #DAE0E2;
+                    }
+                    """)
+            self.mainLayout.addWidget(self.button, position[0], position[1])
+            self.buttons[widgetName] = self.button
+        # Buttons signals
+
+    def addTable(self, database):
         self.tableWidget = QTableView()
+        self.tableWidget.setStyleSheet(
+            "font-family: arial; background-color: #F8F8FF;")
         if QSqlDatabase.contains():
             db = QSqlDatabase.database()
             db.setDatabaseName('database.sqlite')
@@ -60,10 +105,36 @@ class Compras(QWidget):
             db.open()
 
         model = QSqlQueryModel()
-        model.setQuery("SELECT date, concept, value FROM Compras", db)
+        model.setQuery(f"SELECT id, date, concept, value FROM {database}", db)
 
         self.tableWidget.setModel(model)
-        self.mainLayout.addWidget(self.tableWidget, 4, 1, 1, 2)
+        self.mainLayout.addWidget(self.tableWidget, 4, 0, 1, 3)
+
+    def deleteRow(self, database):
+        self.conn = connect("database.sqlite")
+        self.cur = self.conn.cursor()
+        self.cur.execute(
+            f"DELETE FROM {database} WHERE id=(SELECT MAX(id) FROM Compras)")
+        self.conn.commit()
+        self.cur.close()
+
+    def addItem(self, database):
+        try:
+
+            date = self.lineWidgets["FECHA"].text()
+            concept = self.lineWidgets["CONCEPTO"].text()
+            value = int(self.lineWidgets["VALOR"].text())
+
+            self.conn = connect("database.sqlite")
+            self.cur = self.conn.cursor()
+            self.cur.execute(
+                f'''INSERT INTO {database} (date, concept, value) VALUES
+                (?, ?, ?)''', (date, concept, value))
+            self.conn.commit()
+            self.cur.close()
+        except ValueError:
+            QMessageBox.critical(
+                self, "ERROR", "Put all the fields")
 
 
 class Ingresos(QTableView):
@@ -172,7 +243,10 @@ class Registro(QTabWidget):
         self.addTab(self.tab5, "Gastos")
 
     def createLabels(self):
-        # Client Data
+        """This function creates all the labels of the tab1 and 
+        also creates the layouts used in order to organize the 
+        presentation"""
+        # Grid layout to organize the widgets
         self.grid = QGridLayout()
         self.labelWidgets = {
 
@@ -212,9 +286,34 @@ class Registro(QTabWidget):
                     font-family: times;
                     font-weight: bold;""")
                 self.grid.addWidget(self.label, position[0], position[1])
+        # CREATING THE SPECIAL BILL LABEL
+        self.bill = QLabel()
+        self.bill.setFixedWidth(300)
+        self.bill.setStyleSheet("""
+                    font-family: times;
+                    font-size: large;
+                    background-color : white;
+                    border: 4px solid #A8DBC5;
+                    font-size: 15px;
+                    """)
+        self.grid.addWidget(self.bill, 1, 3, 13, 1)
+        # setting the main layout in order to add the logo at the top
+        # and the labels, line Edit widgets and buttons at the bottom
+        self.mainLayout = QVBoxLayout()
+        self.labelImg = QLabel()
+        self.labelImg.setAlignment(Qt.AlignCenter)
+        self.pixmap = QPixmap('kafflogo.png')
+        self.labelImg.setPixmap(self.pixmap)
+        # Setting the vertical layout as the main Layout of the tab 1
+        self.tab1.setLayout(self.mainLayout)
+        self.mainLayout.addWidget(self.labelImg)
+        # Adding the grid layout under the image
+        self.mainLayout.addLayout(self.grid)
 
     def createLinesWidgets(self):
-
+        """Function that create all the Line Edit widgets and 
+        set the predefined values of the Date and Hour Line Widgets 
+        that I don't want the user to touch"""
         lineEditWidgets = {
             "FECHA": (0, 1, 1, 2),
             "HORA": (1, 1, 1, 2),
@@ -244,7 +343,6 @@ class Registro(QTabWidget):
                     border-radius: 5px;
                     font-size: 15px;
                     """)
-                # self.lineEdit.setStyleSheet("border-radius: 1px;")
                 self.grid.addWidget(self.lineEdit, position[0], position[1])
                 self.lineEditWidgets[widgetName] = self.lineEdit
             else:
@@ -264,26 +362,17 @@ class Registro(QTabWidget):
                     self.lineEdit, position[0], position[1], position[2], position[3])
                 self.lineEditWidgets[widgetName] = self.lineEdit
 
-        # Getting the current date
+        # Getting the current date and setting its label
         self.today = str(date.today())
+        self.lineEditWidgets["FECHA"].setText(self.today)
+        # Using QTimer and its signal to actualize the hour Widget
         timer = QTimer(self.tab1)
         timer.timeout.connect(lambda: self.getHour(self.tab1))
         timer.start(1000)
-        self.lineEditWidgets["FECHA"].setText(self.today)
-
-        self.bill = QLabel()
-        self.bill.setFixedWidth(300)
-        self.bill.setStyleSheet("""
-                    font-family: times;
-                    font-size: large;
-                    background-color : white;
-                    border: 4px solid #A8DBC5;
-                    font-size: 15px;
-                    """)
-        self.grid.addWidget(self.bill, 1, 3, 13, 1)
 
     def getHour(self, parent):
-
+        """This function calculates the current hour and 
+        actualize the line edit widget"""
         self.now = datetime.now()
         self.current_time = self.now.strftime("%H:%M:%S")
         self.lineEditWidgets["HORA"].setText(self.current_time)
@@ -316,21 +405,11 @@ class Registro(QTabWidget):
                     """)
             self.grid.addWidget(self.button, position[0], position[1])
             self.buttons[widgetName] = self.button
-        self.vertical = QVBoxLayout()
-        self.labelImg = QLabel()
-
-        self.labelImg.setAlignment(Qt.AlignCenter)
-        self.pixmap = QPixmap('kafflogo.png')
-        self.labelImg.setPixmap(self.pixmap)
-        self.tab1.setLayout(self.vertical)
-        self.vertical.addWidget(self.labelImg)
-        self.vertical.addLayout(self.grid)
 
         # Buttons Signals
         self.buttons["CLEAR"].clicked.connect(self.clearAll)
         self.buttons["BROWSE"].clicked.connect(self.calendar)
         self.buttons["CALCULATE"].clicked.connect(self.calculate)
-# DAE0E2
         # Creating the Combo Box Button
         self.combo = QComboBox()
         self.combo.setStyleSheet("""
@@ -390,6 +469,8 @@ class Registro(QTabWidget):
             self.date.toString("yyyy-MM-dd"))
 
     def getValues(self):
+        """Function responsible of returning all the Line edit 
+        widget values"""
         self.valuesToSave = list()
         for widgetName, widget in self.lineEditWidgets.items():
             if widgetName == "CIUDAD":
@@ -416,6 +497,10 @@ class Registro(QTabWidget):
 
 
 class Controller:
+    """Class used to realize an action that happens when the
+    user clicks a button and the Presentation has to interact
+    with the database"""
+
     def __init__(self, window):
         self.window = window
         self.window.buttons["DELETE"].clicked.connect(self.deleteRow)
@@ -467,7 +552,10 @@ class Controller:
             self.conn = connect('database.sqlite')
             self.cur = self.conn.cursor()
             self.cur.execute("SELECT MAX(id) FROM Clients")
-            idBill = self.cur.fetchone()[0]
+            if self.cur.fetchone()[0] is None:
+                idBill = 0
+            else:
+                idBill = self.cur.fetchone()[0]
             self.cur.close()
 
             self.window.bill.setText(f'''
@@ -498,7 +586,12 @@ def main():
     window.show()
     tabDatabase = Database(window)
     ingresos = Ingresos(window)
-    compras = Compras(window)
+    # lo que sigue entonces es llamar las funciones con parametros al crear la tabla
+    # el parametro será el nombre de la tabla de la base de datos
+    compras = Egresos(window, "Compras")
+    compras.window.tab4.setLayout(compras.mainLayout)
+    gastos = Egresos(window, "Gastos")
+    gastos.window.tab5.setLayout(gastos.mainLayout)
     controller = Controller(window)
     sys.exit(app.exec_())
 
