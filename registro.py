@@ -6,10 +6,8 @@ from datetime import date, datetime
 from sqlite3 import connect
 from PyQt5.QtCore import *
 from functools import partial
-
-
-class Resultados(QTableView):
-    pass
+import matplotlib.pyplot as plt
+import numpy as np
 
 
 class Egresos(QWidget):
@@ -17,7 +15,6 @@ class Egresos(QWidget):
         super().__init__()
         self.window = window
         self.mainLayout = QGridLayout()
-
         self.createLabels(database)
         self.createButtons()
         self.addTable(database)
@@ -36,7 +33,7 @@ class Egresos(QWidget):
         for labelName, position in self.labels.items():
             self.label = QLabel(labelName)
             self.label.setStyleSheet("""
-                    color: #A8DBC5; 
+                    color: #A8DBC5;
                     font-family: times;
                     font-weight: bold;""")
             self.mainLayout.addWidget(self.label, position[0], position[1])
@@ -45,7 +42,7 @@ class Egresos(QWidget):
         self.titleLabel.setStyleSheet("""
                     color: #cac03f; font-family: times;
                     font-weight: bold;
-                    border: 5px inset #cac03f;                 
+                    border: 5px inset #cac03f;
                     font-size: 15px;
                     """)
         self.mainLayout.addWidget(self.titleLabel, 0, 0, 1, 3)
@@ -79,7 +76,7 @@ class Egresos(QWidget):
             self.button = QPushButton(widgetName)
 
             self.button.setStyleSheet("""
-                    QPushButton {                        
+                    QPushButton {
                         background-color: #A8DBC5;
                         font-family: arial;
                         font-weight: bold;
@@ -199,8 +196,7 @@ class Database(QTableView):
                     """)
         self.verticalLayout.addWidget(self.showButton)
 
-    def connectDatabase(self):
-
+    def checkingConnection(self):
         if QSqlDatabase.contains():
             self.db = QSqlDatabase.database()
             self.db.setDatabaseName('database.sqlite')
@@ -209,6 +205,9 @@ class Database(QTableView):
             self.db = QSqlDatabase.addDatabase("QSQLITE")
             self.db.setDatabaseName('database.sqlite')
             self.db.open()
+
+    def connectDatabase(self):
+        self.checkingConnection()
 
         self.model = QSqlQueryModel()
         self.model.setQuery('''
@@ -220,33 +219,104 @@ class Database(QTableView):
         self.setModel(self.model)
 
     def resultadosDiarios(self):
-        if QSqlDatabase.contains():
-            self.db = QSqlDatabase.database()
-            self.db.setDatabaseName('database.sqlite')
-            self.db.open()
-        else:
-            self.db = QSqlDatabase.addDatabase("QSQLITE")
-            self.db.setDatabaseName('database.sqlite')
-            self.db.open()
+        self.checkingConnection()
 
         self.model = QSqlQueryModel()
-        self.model.setQuery('''SELECT date1, ingresos, compras, gastos, 
-            (ingresos - compras - gastos) AS Total FROM (SELECT date1, 
-            ingresos, compras, gastos FROM ((SELECT Clients.date AS date1, 
-            SUM(Clients.value) AS ingresos FROM Clients GROUP BY Clients.date) 
-            JOIN (SELECT Compras.date AS date2, SUM(Compras.value) AS compras 
-            FROM Compras GROUP BY Compras.date) JOIN (SELECT Gastos.date AS date3, 
-            SUM(Gastos.value) AS gastos FROM Gastos GROUP BY Gastos.date) 
+        self.model.setQuery('''SELECT date1, ingresos, compras, gastos,
+            (ingresos - compras - gastos) AS Saldo FROM (SELECT date1,
+            ingresos, compras, gastos FROM ((SELECT Clients.date AS date1,
+            SUM(Clients.value) AS ingresos FROM Clients GROUP BY Clients.date)
+            JOIN (SELECT Compras.date AS date2, SUM(Compras.value) AS compras
+            FROM Compras GROUP BY Compras.date) JOIN (SELECT Gastos.date AS date3,
+            SUM(Gastos.value) AS gastos FROM Gastos GROUP BY Gastos.date)
             ON date1 = date2 AND date2 = date3))''', self.db)
-        # self.model.setQuery('''SELECT date1, ingresos, compras, gastos FROM (
-        #     (SELECT Clients.date AS date1, SUM(Clients.value) AS ingresos FROM
-        #     Clients GROUP BY Clients.date) JOIN (SELECT Compras.date AS date2,
-        #     SUM(Compras.value) AS compras FROM Compras GROUP BY Compras.date)
-        #     JOIN (SELECT Gastos.date AS date3, SUM(Gastos.value) AS gastos FROM
-        #     Gastos GROUP BY Gastos.date) ON date1 = date2 AND date2 = date3)
-        #     ''', self.db)
+
         self.setModel(self.model)
-        # SELECT date, SUM(value) AS 'Ingresos' FROM Clients GROUP BY date
+
+    def resultadosMensuales(self):
+        self.checkingConnection()
+        self.model = QSqlQueryModel()
+        self.model.setQuery('''
+            SELECT months.name, ingresos, compras, gastos,
+            (ingresos - compras - gastos) AS Saldo FROM (
+			SELECT month,
+            ingresos, compras, gastos FROM ((SELECT Clients.month AS month,
+            SUM(Clients.value) AS ingresos FROM Clients GROUP BY Clients.month)
+            JOIN (SELECT Compras.month_id AS month2, SUM(Compras.value) AS compras
+            FROM Compras GROUP BY Compras.month_id) JOIN (SELECT Gastos.month_id AS month3,
+            SUM(Gastos.value) AS gastos FROM Gastos GROUP BY Gastos.month_id)
+            ON month = month2 AND month2 = month3)
+			) JOIN months ON month = months.id''', self.db)
+        self.months = []
+        self.ingresos = []
+        self.compras = []
+        self.gastos = []
+        self.total = []
+        for i in range(self.model.rowCount()):
+            # record is the row and value the column
+            self.months.append(self.model.record(i).value("name"))
+            self.ingresos.append(self.model.record(i).value("ingresos"))
+            self.compras.append(self.model.record(i).value("compras"))
+            self.gastos.append(self.model.record(i).value("gastos"))
+            self.total.append(self.model.record(i).value("Saldo"))
+
+        self.setModel(self.model)
+        self.grafica()
+        # creating the bar plot
+
+    def grafica(self):
+        n_groups = len(self.months)
+        # create plot
+        fig, ax = plt.subplots()
+        index = np.arange(n_groups)
+        bar_width = 0.2
+        opacity = 1
+        index2 = [x + bar_width for x in index]
+        index3 = [x + bar_width for x in index2]
+        index4 = [x + bar_width for x in index3]
+        rects1 = plt.bar(index, self.ingresos, bar_width,
+                         alpha=opacity,
+                         color='r',
+                         label='Ingresos')
+
+        rects2 = plt.bar(index2, self.compras, bar_width,
+                         alpha=opacity,
+                         color='yellow',
+                         label='Compras')
+        rects3 = plt.bar(index3, self.gastos, bar_width,
+                         alpha=opacity,
+                         color='b',
+                         label='Gastos')
+        rects4 = plt.bar(index4, self.total, bar_width,
+                         alpha=opacity,
+                         color='black',
+                         label='Saldo')
+
+        plt.xlabel('Meses')
+        plt.ylabel('Total ($)')
+        plt.title('Resultados Mensuales')
+        plt.xticks(index + bar_width, self.months)
+        plt.grid()
+        plt.legend()
+        plt.tight_layout()
+        plt.show()
+
+    def resultadosAnuales(self):
+        self.checkingConnection()
+
+        self.model = QSqlQueryModel()
+        self.model.setQuery('''SELECT years, ingresos, compras, gastos, 
+            (ingresos - compras - gastos) AS Total FROM (
+			SELECT years, 
+            ingresos, compras, gastos FROM ((SELECT Clients.year AS years, 
+            SUM(Clients.value) AS ingresos FROM Clients GROUP BY Clients.year) 
+            JOIN (SELECT Compras.year AS year2, SUM(Compras.value) AS compras 
+            FROM Compras GROUP BY Compras.year) JOIN (SELECT Gastos.year AS year3, 
+            SUM(Gastos.value) AS gastos FROM Gastos GROUP BY Gastos.year) 
+            ON years = year2 AND year2 = year3)
+			) ''', self.db)
+
+        self.setModel(self.model)
 
 
 class Registro(QTabWidget):
@@ -267,16 +337,20 @@ class Registro(QTabWidget):
         self.tab4 = QWidget()
         self.tab5 = QWidget()
         self.tab6 = QWidget()
+        self.tab7 = QWidget()
+        self.tab8 = QWidget()
         self.addTab(self.tab1, "Registro")
         self.addTab(self.tab2, "Base de Datos")
         self.addTab(self.tab3, "Ingresos")
         self.addTab(self.tab4, "Compras")
         self.addTab(self.tab5, "Gastos")
-        self.addTab(self.tab6, "Res. DIarios")
+        self.addTab(self.tab6, "Res. Diarios")
+        self.addTab(self.tab7, "Res. Mensuales")
+        self.addTab(self.tab8, "Res. Anuales")
 
     def createLabels(self):
-        """This function creates all the labels of the tab1 and 
-        also creates the layouts used in order to organize the 
+        """This function creates all the labels of the tab1 and
+        also creates the layouts used in order to organize the
         presentation"""
         # Grid layout to organize the widgets
         self.grid = QGridLayout()
@@ -305,7 +379,7 @@ class Registro(QTabWidget):
                 self.label.setStyleSheet("""
                     color: #cac03f; font-family: times;
                     font-weight: bold;
-                    border: 5px inset #cac03f;                 
+                    border: 5px inset #cac03f;
                     font-size: 15px;
                     """)
                 self.grid.addWidget(
@@ -314,7 +388,7 @@ class Registro(QTabWidget):
             else:
                 self.label = QLabel(labelName)
                 self.label.setStyleSheet("""
-                    color: #A8DBC5; 
+                    color: #A8DBC5;
                     font-family: times;
                     font-weight: bold;""")
                 self.grid.addWidget(self.label, position[0], position[1])
@@ -343,8 +417,8 @@ class Registro(QTabWidget):
         self.mainLayout.addLayout(self.grid)
 
     def createLinesWidgets(self):
-        """Function that create all the Line Edit widgets and 
-        set the predefined values of the Date and Hour Line Widgets 
+        """Function that create all the Line Edit widgets and
+        set the predefined values of the Date and Hour Line Widgets
         that I don't want the user to touch"""
         lineEditWidgets = {
             "FECHA": (0, 1, 1, 2),
@@ -403,7 +477,7 @@ class Registro(QTabWidget):
         timer.start(1000)
 
     def getHour(self, parent):
-        """This function calculates the current hour and 
+        """This function calculates the current hour and
         actualize the line edit widget"""
         self.now = datetime.now()
         self.current_time = self.now.strftime("%H:%M:%S")
@@ -424,7 +498,7 @@ class Registro(QTabWidget):
 
             self.button.setStyleSheet("""
                     QPushButton {
-                        
+
                         background-color: #A8DBC5;
                         font-family: arial;
                         font-weight: bold;
@@ -449,7 +523,7 @@ class Registro(QTabWidget):
                     font-size: 15px;
                     background-color : #A8DBC5;
                     border: 1px solid white;
-                    
+
                     """)
         self.combo.addItems(['Efectivo', 'Nequi'])
         self.grid.addWidget(self.combo, 7, 1, 1, 2)
@@ -501,7 +575,7 @@ class Registro(QTabWidget):
             self.date.toString("yyyy-MM-dd"))
 
     def getValues(self):
-        """Function responsible of returning all the Line edit 
+        """Function responsible of returning all the Line edit
         widget values"""
         self.valuesToSave = list()
         for widgetName, widget in self.lineEditWidgets.items():
@@ -518,14 +592,15 @@ class Registro(QTabWidget):
             payment_id = 2
 
         date, hour, name, birthday, cellphone, address, city_id, pollo, carne, empanachos, total, value = self.valuesToSave
-
+        month = int(date.split("-")[1])
+        year = int(date.split("-")[0])
         pollo = int(pollo)
         carne = int(carne)
         empanachos = int(empanachos)
         total = int(total)
         value = int(value)
 
-        return date, hour, name, birthday, cellphone, address, city_id, payment_id, pollo, carne, empanachos, total, value
+        return date, month, year, hour, name, birthday, cellphone, address, city_id, payment_id, pollo, carne, empanachos, total, value
 
 
 class Controller:
@@ -554,9 +629,9 @@ class Controller:
             self.valuesToSave = self.window.getValues()
             self.conn = connect('database.sqlite')
             self.cur = self.conn.cursor()
-            self.cur.execute('''INSERT INTO Clients(date, hour, name, birthday,
+            self.cur.execute('''INSERT INTO Clients (date, month, year, hour, name, birthday,
             cellphone, address,city_id, payment_id, pollo, carne, empanachos, total,
-            value) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', self.valuesToSave)
+            value) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? , ?)''', self.valuesToSave)
             self.conn.commit()
             self.cur.close()
             self.window.clearAll()
@@ -590,19 +665,19 @@ class Controller:
             self.window.bill.setText(f'''
         Welcome to Kaff
         ==============================
-        Fecha: {today}   
+        Fecha: {today}
         Hora: {hour}
         No de Factura: {idBill + 1}
-        Nombre: {nombre}        
+        Nombre: {nombre}
         ==============================
-       
+
         Descr\t\tCant\tPrecio\n
         Pollo\t\t{pollo}\t{pollo*valorEmpanada}
         Carne\t\t{carne}\t{carne*valorEmpanada}
         Pollo\t\t{empanachos}\t{empanachos*2500}
         ==============================
         TOTAL\t\t{total}\t${price}
-        
+
         ''')
         except ValueError:
             QMessageBox.critical(
@@ -623,6 +698,14 @@ def main():
     resultados.window.tab6.setLayout(resultados.verticalLayout)
     resultados.resultadosDiarios()
     resultados.showButton.clicked.connect(resultados.resultadosDiarios)
+
+    monthResults = Database(window)
+    monthResults.window.tab7.setLayout(monthResults.verticalLayout)
+    monthResults.showButton.clicked.connect(monthResults.resultadosMensuales)
+
+    anualResults = Database(window)
+    anualResults.window.tab8.setLayout(anualResults.verticalLayout)
+    anualResults.showButton.clicked.connect(anualResults.resultadosAnuales)
 
     ingresos = Ingresos(window)
     # lo que sigue entonces es llamar las funciones con parametros al crear la tabla
