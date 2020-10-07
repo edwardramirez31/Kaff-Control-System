@@ -87,8 +87,8 @@ class MainWindow(QTabWidget):
                     font-weight: bold;""")
                 self.grid.addWidget(self.label, position[0], position[1])
         # CREATING THE SPECIAL BILL LABEL
-        self.bill = QLabel()
-        self.bill.setFixedWidth(300)
+        self.bill = QTextEdit()
+        self.bill.setFixedWidth(320)
         self.bill.setStyleSheet("""
                     font-family: times;
                     font-size: large;
@@ -275,7 +275,8 @@ class MainWindow(QTabWidget):
         try:
             # Total of main products
             self.Total = int(self.pollo) + int(self.carne)
-            self.lineEditWidgets["CANTIDAD DE EMPA"].setText(str(self.Total))
+            self.lineEditWidgets["CANTIDAD DE EMPA"].setText(
+                str(self.Total + int(self.empanachos)))
             # Calculate the value in function of the Total
             if self.Total > 5:
                 self.value = round(7000/3 * self.Total +
@@ -347,7 +348,7 @@ class MainWindow(QTabWidget):
         self.dialog = QPrintDialog(self.printer, self)
 
         if self.dialog.exec_() == QPrintDialog.Accepted:
-            self.bill.print_(self.primter)
+            self.bill.print_(self.printer)
 
 
 class Controller:
@@ -399,6 +400,7 @@ class Controller:
             hour = self.window.lineEditWidgets["HORA"].text()
             # Getting the purchase values
             nombre = self.window.lineEditWidgets["NOMBRE"].text()
+            direccion = self.window.lineEditWidgets["DIRECCIÓN"].text()
             price = self.window.lineEditWidgets["VALOR"].text()
             total = int(self.window.lineEditWidgets["CANTIDAD DE EMPA"].text())
             pollo = int(self.window.lineEditWidgets["POLLO"].text())
@@ -407,7 +409,7 @@ class Controller:
 
             # Setting the actual item price
             if total > 5:
-                valorEmpanada = 2350
+                valorEmpanada = 7000/3
             else:
                 valorEmpanada = 2500
             # Get bill number
@@ -419,21 +421,26 @@ class Controller:
             # Setting the text of the Bill Widget
             self.window.bill.setText(f'''
         Welcome to Kaff
-        ==============================
+        ===============================
         Fecha: {today}
         Hora: {hour}
         No de Factura: {idBill + 1}
         Nombre: {nombre}
-        ==============================
+        Dirección: {direccion}
+        ===============================
 
         Descr\t\tCant\tPrecio\n
-        Pollo\t\t{pollo}\t{pollo*valorEmpanada}
-        Carne\t\t{carne}\t{carne*valorEmpanada}
-        Empanachos\t\t{empanachos}\t{empanachos*2500}
-        ==============================
-        TOTAL\t\t{total}\t${price}
+        Pollo\t\t{pollo}\t{round(pollo*valorEmpanada)}
+        Carne\t\t{carne}\t{round(carne*valorEmpanada)}
+        Empanachos\t{empanachos}\t{empanachos*2500}
+        ===============================
+        TOTAL\t{total}\t${price}
 
         ''')
+            # SAVING THE BILL IN "Facturas" Folder
+            with open(f"Facturas/Factura No {idBill + 1}", "w") as fhandle:
+                fhandle.write(self.window.bill.toPlainText())
+
         except ValueError:
             QMessageBox.critical(
                 self.window, "ERROR", "Put all the fields")
@@ -680,6 +687,7 @@ class Database(QTableView):
         model = QSqlQueryModel()
         model.setQuery('''
         SELECT Clients.id, Clients.date, Clients.hour, Clients.name, 
+        (Clients.carne + Clients.pollo) AS empanadas,
         Clients.total, Clients.value FROM Clients''', self.db)
         self.setModel(model)
 
